@@ -70,6 +70,7 @@ class Artefact:
     volatility: int          # higher = more volatile; collection sorts desc
     spec: str                # command to run, or remote path to copy
     is_command: bool = True  # True => run command; False => fetch file/path
+    prepare: str | None = None   # optional command that produces an unlocked copy at `spec`
 
 
 @dataclass

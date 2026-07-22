@@ -40,16 +40,24 @@ def collect_from_host(
 
     for artefact in ordered:
         result = CollectionResult(host_ip=host.ip, artefact_id=artefact.id)
+        prepared_temp = None      # set only if we created a temp file to clean up
         try:
             if artefact.is_command:
-                # Volatile output generated on the fly - nothing on-disk to
-                # hash at source; we hash what we received.
+                # Volatile output generated on the fly - nothing to hash at source.
                 data = transport.run_command(artefact.spec)
                 source_hash = None
                 out_name = f"{artefact.id}.txt"
             else:
-                # A file: hash it ON the target first (NFR1), then fetch and
-                # hash what arrived, so the two can be compared.
+                if artefact.prepare:
+                    # Locked file: ask Windows to write an unlocked copy first,
+                    # then fetch THAT. spec points at the copy's location.
+                    transport.run_command(artefact.prepare)
+                    prepared_temp = artefact.spec
+                    audit.log(host.ip, "prepare", artefact=artefact.name,
+                              outcome="ok", detail=f"created {artefact.spec}")
+
+                # A file (either an unlocked original, or the prepared copy):
+                # hash on the target (NFR1), fetch, then compare.
                 source_hash = transport.remote_hash(artefact.spec)
                 data = transport.fetch_file(artefact.spec)
                 out_name = f"{artefact.id}_{_basename(artefact.spec)}"
@@ -70,13 +78,23 @@ def collect_from_host(
                 outcome="ok",
             )
         except Exception as exc:
-            # One artefact failing must not abort the rest of the host.
             result.collected = False
             result.error = str(exc)
             audit.log(
                 host.ip, "collect", artefact=artefact.name,
                 outcome="error", detail=str(exc),
             )
+        finally:
+            # Remove any temp file we created - even if the fetch above failed.
+            # This is the footprint-minimisation guarantee (NFR4).
+            if prepared_temp is not None:
+                try:
+                    transport.delete_remote(prepared_temp)
+                    audit.log(host.ip, "cleanup", artefact=artefact.name,
+                              outcome="ok", detail=f"removed {prepared_temp}")
+                except Exception as exc:
+                    audit.log(host.ip, "cleanup", artefact=artefact.name,
+                              outcome="error", detail=str(exc))
 
         results.append(result)
 

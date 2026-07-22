@@ -1,7 +1,7 @@
 """Module 2 - remote-access verification (methodology s3.5.3).
 
-For each host, using its assigned credential profile, build the right transport
-and record a three-state result on the Host (winrm_state / ssh_state). Confirm
+For each host, using its assigned credential profile, built the right transport
+and record a three-state result on the Host (winrm_state / ssh_state). Confirmed
 the OS guess here: successful WinRM auth => actual_os = WINDOWS, successful SSH
 => UNIX.
 """

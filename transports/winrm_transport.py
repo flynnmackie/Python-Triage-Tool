@@ -82,5 +82,12 @@ class WinRMTransport(Transport):
         out = out.strip().lower()
         return out or None
 
+    def delete_remote(self, remote_path: str) -> None:
+        client = self._connect()
+        # -Force to remove read-only/hidden; -EA SilentlyContinue so a missing
+        # file doesn't raise (cleanup should be quiet).
+        ps = f"Remove-Item -LiteralPath '{remote_path}' -Force -ErrorAction SilentlyContinue"
+        client.execute_ps(ps)
+
     def close(self) -> None:
         self._client = None
