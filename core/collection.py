@@ -13,6 +13,13 @@ from .audit import AuditLog
 from .hashing import sha256_bytes
 from .models import Artefact, CollectionResult, Host
 
+from datetime import datetime
+
+
+def run_timestamp() -> str:
+    """One folder name per run: sorts chronologically, no illegal characters."""
+    return datetime.now().strftime("%Y-%m-%d-%H%M_%Ss")
+
 
 def order_by_volatility(artefacts: list[Artefact]) -> list[Artefact]:
     """Most volatile first (order of volatility, RFC 3227 / NFR3)."""
@@ -30,12 +37,13 @@ def collect_from_host(
     transport,           # a Transport instance for this host
     audit: AuditLog,
     out_root: str | Path,
+    run_folder: str,
 ) -> list[CollectionResult]:
     """Collect the selected artefacts from one host, most volatile first."""
     ordered = order_by_volatility(artefacts)
     results: list[CollectionResult] = []
 
-    host_dir = Path(out_root) / host.ip
+    host_dir = Path(out_root) / run_folder / host.ip
     host_dir.mkdir(parents=True, exist_ok=True)
 
     for artefact in ordered:
@@ -64,7 +72,9 @@ def collect_from_host(
 
             received_hash = sha256_bytes(data)
 
-            out_path = host_dir / out_name
+            category_dir = host_dir / artefact.category
+            category_dir.mkdir(parents=True, exist_ok=True)
+            out_path = category_dir / out_name
             out_path.write_bytes(data)
 
             result.collected = True
