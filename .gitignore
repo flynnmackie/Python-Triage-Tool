@@ -1,5 +1,7 @@
 .venv/
 scratch.py
+scratch_audit.csv
 collected/
 __pycache__/
 *.csv
+*.pyc
