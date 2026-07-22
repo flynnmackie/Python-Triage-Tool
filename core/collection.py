@@ -14,6 +14,7 @@ from .hashing import sha256_bytes
 from .models import Artefact, CollectionResult, Host
 
 from datetime import datetime
+import zipfile
 
 
 def run_timestamp() -> str:
@@ -29,6 +30,14 @@ def order_by_volatility(artefacts: list[Artefact]) -> list[Artefact]:
 def _basename(remote_path: str) -> str:
     """Last path component, tolerant of both / and \\ separators."""
     return remote_path.replace("\\", "/").rstrip("/").split("/")[-1] or "artefact"
+
+def _extract_zip(zip_bytes: bytes, dest_dir: Path) -> int:
+    """Write the fetched zip to dest_dir and unpack it there. Returns file count."""
+    import io
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
+        zf.extractall(dest_dir)
+        return len(zf.namelist())
 
 
 def collect_from_host(
@@ -74,8 +83,18 @@ def collect_from_host(
 
             category_dir = host_dir / artefact.category
             category_dir.mkdir(parents=True, exist_ok=True)
-            out_path = category_dir / out_name
-            out_path.write_bytes(data)
+
+            if artefact.is_archive:
+                # Hash covers the zip (integrity of the transfer); then unpack
+                # the individual files into the category folder for analysis.
+                extract_dir = category_dir / artefact.id
+                count = _extract_zip(data, extract_dir)
+                out_path = category_dir
+                audit.log(host.ip, "extract", artefact=artefact.name,
+                          outcome="ok", detail=f"{count} files -> {extract_dir}")
+            else:
+                out_path = category_dir / out_name
+                out_path.write_bytes(data)
 
             result.collected = True
             result.source_hash = source_hash

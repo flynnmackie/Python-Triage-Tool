@@ -71,6 +71,7 @@ class Artefact:
     spec: str                # command to run, or remote path to copy
     is_command: bool = True  # True => run command; False => fetch file/path
     prepare: str | None = None   # optional command that produces an unlocked copy at `spec`
+    is_archive: bool = False     # if True, fetched file is a zip to unpack locally into the category folder
 
 
 @dataclass
