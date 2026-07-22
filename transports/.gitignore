@@ -1,0 +1,5 @@
+.venv/
+scratch.py
+collected/
+__pycache__/
+*.csv

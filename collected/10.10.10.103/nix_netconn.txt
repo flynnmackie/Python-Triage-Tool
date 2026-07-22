@@ -1,0 +1,17 @@
+Netid State  Recv-Q Send-Q   Local Address:Port  Peer Address:Port Process                           
+udp   UNCONN 0      0              0.0.0.0:60902      0.0.0.0:*                                      
+udp   UNCONN 0      0         10.10.10.103:3702       0.0.0.0:*     users:(("python3",pid=3249,fd=9))
+udp   UNCONN 0      0      239.255.255.250:3702       0.0.0.0:*     users:(("python3",pid=3249,fd=7))
+udp   UNCONN 0      0           127.0.0.54:53         0.0.0.0:*                                      
+udp   UNCONN 0      0        127.0.0.53%lo:53         0.0.0.0:*                                      
+udp   UNCONN 0      0              0.0.0.0:5353       0.0.0.0:*                                      
+udp   UNCONN 0      0              0.0.0.0:42667      0.0.0.0:*     users:(("python3",pid=3249,fd=8))
+udp   UNCONN 0      0                 [::]:41619         [::]:*                                      
+udp   UNCONN 0      0                 [::]:5353          [::]:*                                      
+tcp   LISTEN 0      4096     127.0.0.53%lo:53         0.0.0.0:*                                      
+tcp   LISTEN 0      4096        127.0.0.54:53         0.0.0.0:*                                      
+tcp   LISTEN 0      4096         127.0.0.1:631        0.0.0.0:*                                      
+tcp   LISTEN 0      4096           0.0.0.0:22         0.0.0.0:*                                      
+tcp   ESTAB  0      112       10.10.10.103:22     10.10.10.53:51568                                  
+tcp   LISTEN 0      4096             [::1]:631           [::]:*                                      
+tcp   LISTEN 0      4096              [::]:22            [::]:*                                      

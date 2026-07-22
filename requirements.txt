@@ -1,0 +1,4 @@
+pypsrp
+paramiko
+PySide6
+# pyinstaller  # build-time only, for packaging the standalone executable

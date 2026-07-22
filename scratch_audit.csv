@@ -1,0 +1,26 @@
+timestamp,host,action,artefact,source_hash,received_hash,match,outcome,detail
+2026-07-21T15:24:11+00:00,10.10.10.103,verify,,,,,ssh: authenticated,"profile=Linux SSH, mechanism=ssh_password"
+2026-07-21T15:28:53+00:00,10.10.10.103,verify,,,,,ssh: present,"profile=Linux SSH, mechanism=ssh_password"
+2026-07-21T15:30:32+00:00,10.10.10.104,verify,,,,,ssh: absent,"profile=Linux SSH, mechanism=ssh_password"
+2026-07-21T15:34:37+00:00,10.10.10.104,verify,,,,,ssh: no service listening (absent),"profile=Linux SSH, mechanism=ssh_password"
+2026-07-21T15:34:50+00:00,10.10.10.103,verify,,,,,"ssh: service present, credentials rejected","profile=Linux SSH, mechanism=ssh_password"
+2026-07-21T15:48:28+00:00,10.10.10.103,collect,Running processes,,2b9293fd00cb1e41ff69bfcc67b6ba0e8c9e7b3c73054cc6046ea0bb9a1640bf,,ok,
+2026-07-21T15:48:28+00:00,10.10.10.103,collect,Network connections,,ed13eef6ad05f860882c899a27dc97f76cbb346f665fcdefa8edb846d47be978,,ok,
+2026-07-21T15:48:28+00:00,10.10.10.103,collect,Logged-on users,,398d2562b90ff5a4018be688c1dff75dfeb462c65ab1b23f930d213ece256e1c,,ok,
+2026-07-21T15:48:28+00:00,10.10.10.103,collect,Auth log,94c8aac20b5d65924a2d01ec26ebce7008f431cafd9e927c93c0c0273486c615,94c8aac20b5d65924a2d01ec26ebce7008f431cafd9e927c93c0c0273486c615,Y,ok,
+2026-07-21T16:27:53+00:00,10.10.10.102,verify,,,,,winrm: authenticated,"profile=Standalone Admin, mechanism=local_ntlm"
+2026-07-21T16:30:35+00:00,10.10.10.102,verify,,,,,no profile assigned,
+2026-07-21T16:30:54+00:00,10.10.10.100,verify,,,,,winrm: authenticated,"profile=Domain Admin, mechanism=domain_kerberos"
+2026-07-21T16:30:56+00:00,10.10.10.101,verify,,,,,winrm: authenticated,"profile=Domain Admin, mechanism=domain_kerberos"
+2026-07-21T16:32:49+00:00,10.10.10.102,collect,Running processes,,45c2c4d9eebeefea3de0a557ae67317930f7b00934ce33ef353bf0b39cee9396,,ok,
+2026-07-21T16:32:54+00:00,10.10.10.102,collect,Hostname file,2D6BDFB341BE3A6234B24742377F93AA7C7CFB0D9FD64EFA9282C87852E57085,2d6bdfb341be3a6234b24742377f93aa7c7cfb0d9fd64efa9282c87852e57085,N,ok,
+2026-07-21T16:35:01+00:00,10.10.10.100,verify,,,,,winrm: authenticated,"profile=Domain Admin, mechanism=domain_kerberos"
+2026-07-21T16:35:04+00:00,10.10.10.101,verify,,,,,winrm: authenticated,"profile=Domain Admin, mechanism=domain_kerberos"
+2026-07-21T16:36:03+00:00,10.10.10.100,collect,Running processes,,547a6677278de2ff9e578449b45b931d70d676c30166b53b0a0449e06df0d62d,,ok,
+2026-07-21T16:36:04+00:00,10.10.10.100,collect,hosts file,2D6BDFB341BE3A6234B24742377F93AA7C7CFB0D9FD64EFA9282C87852E57085,2d6bdfb341be3a6234b24742377f93aa7c7cfb0d9fd64efa9282c87852e57085,N,ok,
+2026-07-21T16:36:06+00:00,10.10.10.101,collect,Running processes,,67b8dbc0ceb6e61332ac348683bfe331e34869206592ee8d6b86b4ec52df4653,,ok,
+2026-07-21T16:36:12+00:00,10.10.10.101,collect,hosts file,2D6BDFB341BE3A6234B24742377F93AA7C7CFB0D9FD64EFA9282C87852E57085,2d6bdfb341be3a6234b24742377f93aa7c7cfb0d9fd64efa9282c87852e57085,N,ok,
+2026-07-22T07:44:43+00:00,10.10.10.100,collect,Running processes,,5a4206c4a82e6671b02ef8d7769bb2b1244351f4a8f3fc473683d29520c6efc0,,ok,
+2026-07-22T07:44:44+00:00,10.10.10.100,collect,hosts file,2d6bdfb341be3a6234b24742377f93aa7c7cfb0d9fd64efa9282c87852e57085,2d6bdfb341be3a6234b24742377f93aa7c7cfb0d9fd64efa9282c87852e57085,Y,ok,
+2026-07-22T07:44:48+00:00,10.10.10.101,collect,Running processes,,6baed2a3e065fe5dcef7f2b5e9eac75284168cd3a63f5c3cccbfc11bdc8e43c2,,ok,
+2026-07-22T07:44:55+00:00,10.10.10.101,collect,hosts file,2d6bdfb341be3a6234b24742377f93aa7c7cfb0d9fd64efa9282c87852e57085,2d6bdfb341be3a6234b24742377f93aa7c7cfb0d9fd64efa9282c87852e57085,Y,ok,

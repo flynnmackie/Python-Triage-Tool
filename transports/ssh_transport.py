@@ -1,0 +1,93 @@
+"""Unix-like transport over SSH via paramiko.
+
+IMPLEMENT the methods below. Pointers:
+  - paramiko.SSHClient(); set_missing_host_key_policy(...) (decide your policy
+    deliberately and note it for the evaluation); connect(host, username=...,
+    password=... OR key_filename=...).
+  - exec_command(cmd) returns (stdin, stdout, stderr); read stdout for output.
+  - open_sftp().get(remote, local) to fetch files.
+  - remote_hash: run `sha256sum <path>` on the target and parse the first field.
+"""
+
+from __future__ import annotations
+
+import socket
+
+import paramiko
+
+from core.models import AccessState, CredentialProfile, CredKind
+from .base import Transport
+
+SSH_PORT = 22
+
+
+class SSHTransport(Transport):
+    def __init__(self, host_ip: str, profile: CredentialProfile):
+        super().__init__(host_ip, profile)
+        self._client: paramiko.SSHClient | None = None
+
+    def _connect(self) -> paramiko.SSHClient:
+        """Open (once) and return an authenticated paramiko client."""
+        if self._client is not None:
+            return self._client
+
+        client = paramiko.SSHClient()
+        # Lab policy: auto-accept unknown host keys. Deliberate, and noted for
+        # the evaluation - a stricter policy would verify keys first.
+        client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+
+        kwargs = {
+            "hostname": self.host_ip,
+            "port": SSH_PORT,
+            "username": self.profile.username,
+            "timeout": 8,
+            "allow_agent": False,     # don't try the SSH agent
+            "look_for_keys": False,   # don't try random keys on disk
+        }
+        if self.profile.kind is CredKind.SSH_KEY:
+            kwargs["key_filename"] = self.profile.secret  # path to private key
+        else:  # SSH_PASSWORD
+            kwargs["password"] = self.profile.secret
+
+        client.connect(**kwargs)
+        self._client = client
+        return client
+
+    def test_access(self) -> AccessState:
+        # 1. Is port 22 even open? If not -> no channel here.
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.settimeout(1.0)
+            if s.connect_ex((self.host_ip, SSH_PORT)) != 0:
+                return AccessState.ABSENT
+        # 2. Port open - do the credentials work?
+        try:
+            self._connect()
+        except paramiko.AuthenticationException:
+            return AccessState.PRESENT_NO_AUTH
+        except (paramiko.SSHException, OSError):
+            return AccessState.PRESENT_NO_AUTH
+        return AccessState.AUTHENTICATED
+
+    def run_command(self, command: str) -> bytes:
+        client = self._connect()
+        _stdin, stdout, _stderr = client.exec_command(command)
+        return stdout.read()
+
+    def fetch_file(self, remote_path: str) -> bytes:
+        client = self._connect()
+        sftp = client.open_sftp()
+        try:
+            with sftp.open(remote_path, "rb") as f:
+                return f.read()
+        finally:
+            sftp.close()
+
+    def remote_hash(self, remote_path: str) -> str | None:
+        out = self.run_command(f"sha256sum {remote_path}").decode(errors="replace")
+        parts = out.split()          # "<hash>  <path>"
+        return parts[0] if parts else None
+
+    def close(self) -> None:
+        if self._client is not None:
+            self._client.close()
+            self._client = None
