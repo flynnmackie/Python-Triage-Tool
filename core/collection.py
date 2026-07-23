@@ -68,7 +68,7 @@ def collect_from_host(
                 if artefact.prepare:
                     # Locked file: ask Windows to write an unlocked copy first,
                     # then fetch THAT. spec points at the copy's location.
-                    transport.run_command(artefact.prepare)
+                    transport.run_command(artefact.prepare, use_sudo=artefact.requires_sudo)
                     prepared_temp = artefact.spec
                     audit.log(host.ip, "prepare", artefact=artefact.name,
                               outcome="ok", detail=f"created {artefact.spec}")

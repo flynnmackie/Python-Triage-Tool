@@ -60,7 +60,7 @@ class WinRMTransport(Transport):
             return AccessState.PRESENT_NO_AUTH
         return AccessState.AUTHENTICATED
 
-    def run_command(self, command: str) -> bytes:
+    def run_command(self, command: str, use_sudo: bool = False) -> bytes:
         client = self._connect()
         output, _streams, _had_errors = client.execute_ps(command)
         return output.encode("utf-8", errors="replace")

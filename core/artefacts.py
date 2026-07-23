@@ -90,15 +90,17 @@ UNIX_CATALOGUE: list[Artefact] = [
     Artefact("nix_cron_list", "User crontab", "Volatile", OSFamily.UNIX,
              volatility=80, spec="crontab -l 2>/dev/null; echo '--- /etc/crontab ---'; cat /etc/crontab 2>/dev/null"),
 
-    # Logs - system logs directory; tar on target, fetch, flatten.
+    # Logs - root-owned; zip via sudo into /tmp, chmod so UnixUser can fetch it.
     Artefact("nix_varlog", "System logs (/var/log)", "SystemLogs", OSFamily.UNIX,
-             volatility=15, is_command=False, is_archive=True,
+             volatility=15, is_command=False, is_archive=True, requires_sudo=True,
              spec=f"{_NIX_TMP}/rtc_varlog.zip",
-             prepare=f"cd /var/log && zip -r {_NIX_TMP}/rtc_varlog.zip . >/dev/null 2>&1"),
+             prepare=f"sh -c 'cd /var/log && zip -r {_NIX_TMP}/rtc_varlog.zip . >/dev/null 2>&1; chmod 644 {_NIX_TMP}/rtc_varlog.zip'"),
 
-    # Shell history (root; per-user history is future work).
+    # Root shell history - copy out via sudo, then fetch the readable copy.
     Artefact("nix_bash_history", "Root shell history", "History", OSFamily.UNIX,
-             volatility=15, is_command=False, spec="/root/.bash_history"),
+             volatility=15, is_command=False, requires_sudo=True,
+             spec=f"{_NIX_TMP}/rtc_root_bash_history",
+             prepare=f"sh -c 'cp /root/.bash_history {_NIX_TMP}/rtc_root_bash_history; chmod 644 {_NIX_TMP}/rtc_root_bash_history'"),
 ]
 
 

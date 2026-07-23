@@ -68,8 +68,16 @@ class SSHTransport(Transport):
             return AccessState.PRESENT_NO_AUTH
         return AccessState.AUTHENTICATED
 
-    def run_command(self, command: str) -> bytes:
+    def run_command(self, command: str, use_sudo: bool = False) -> bytes:
         client = self._connect()
+        if use_sudo:
+            # -S reads the password from stdin (no TTY to prompt on);
+            # -p '' suppresses the prompt text so it doesn't pollute output.
+            sudo_pw = self.profile.sudo_secret or self.profile.secret
+            stdin, stdout, _stderr = client.exec_command(f"sudo -S -p '' {command}")
+            stdin.write(sudo_pw + "\n")
+            stdin.flush()
+            return stdout.read()
         _stdin, stdout, _stderr = client.exec_command(command)
         return stdout.read()
 

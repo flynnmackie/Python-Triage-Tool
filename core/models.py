@@ -58,6 +58,7 @@ class CredentialProfile:
     username: str
     secret: str = field(repr=False, default="")  # password or key path; repr hidden
     domain: Optional[str] = None
+    sudo_secret: str = field(repr=False, default="")  # optional; falls back to `secret`
 
 
 @dataclass
@@ -72,7 +73,7 @@ class Artefact:
     is_command: bool = True  # True => run command; False => fetch file/path
     prepare: str | None = None   # optional command that produces an unlocked copy at `spec`
     is_archive: bool = False     # if True, fetched file is a zip to unpack locally into the category folder
-
+    requires_sudo: bool = False  # if True (Unix), run this artefact's prepare/command via sudo -S
 
 @dataclass
 class CollectionResult:
