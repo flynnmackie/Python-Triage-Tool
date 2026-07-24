@@ -87,8 +87,7 @@ def collect_from_host(
             if artefact.is_archive:
                 # Hash covers the zip (integrity of the transfer); then unpack
                 # the individual files into the category folder for analysis.
-                extract_dir = category_dir / artefact.id
-                count = _extract_zip(data, extract_dir)
+                count = _extract_zip(data, category_dir)
                 out_path = category_dir
                 audit.log(host.ip, "extract", artefact=artefact.name,
                           outcome="ok", detail=f"{count} files -> {extract_dir}")

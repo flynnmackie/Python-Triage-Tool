@@ -101,8 +101,10 @@ UNIX_CATALOGUE: list[Artefact] = [
              volatility=15, is_command=False, requires_sudo=True,
              spec=f"{_NIX_TMP}/rtc_root_bash_history",
              prepare=f"sh -c 'cp /root/.bash_history {_NIX_TMP}/rtc_root_bash_history; chmod 644 {_NIX_TMP}/rtc_root_bash_history'"),
+ 
+    Artefact("nix_lastlog", "Last login per user", "Volatile", OSFamily.UNIX,
+             volatility=85, spec="lastlog"),
 ]
-
 
 def catalogue_for(os_family: OSFamily) -> list[Artefact]:
     if os_family is OSFamily.WINDOWS:

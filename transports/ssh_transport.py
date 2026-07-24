@@ -95,6 +95,10 @@ class SSHTransport(Transport):
         parts = out.split()          # "<hash>  <path>"
         return parts[0] if parts else None
 
+    def delete_remote(self, remote_path: str) -> None:
+        # Cleanup should be quiet; -f so a missing file isn't an error.
+        self.run_command(f"rm -f {remote_path}", use_sudo=True)
+
     def close(self) -> None:
         if self._client is not None:
             self._client.close()
