@@ -1,0 +1,7 @@
+{
+    "jupyter.notebookFileRoot": "${workspaceFolder}",
+    "python.terminal.executeInFileDir": false,
+    "terminal.integrated.env.windows": {
+        "PYTHONPATH": "${workspaceFolder}"
+    }
+}

@@ -5,12 +5,18 @@ from __future__ import annotations
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QTabWidget, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QLineEdit, QPushButton, QTableWidget, QTableWidgetItem, QMessageBox,
+    QComboBox, QListWidget,
 )
 from PySide6.QtCore import QThread, Signal, QObject, Qt
 from PySide6.QtGui import QColor
 
 from core.discovery import expand_targets, discover
 from core.models import OSFamily
+
+from core.credentials import CredentialStore
+from core.models import OSFamily, CredentialProfile, CredKind, AccessState
+
+
 
 # Colour palette (soft backgrounds so text stays readable).
 _CONF_COLOURS = {
@@ -28,6 +34,7 @@ class AppState:
     """Shared data the tabs pass between each other (discovery -> access -> collect)."""
     def __init__(self):
         self.hosts = []
+        self.store = CredentialStore()      # shared credential profiles
 
 
 class ScanWorker(QObject):
@@ -135,6 +142,115 @@ class DiscoveryTab(QWidget):
         # Status cell: green text for "up".
         self.table.item(r, 1).setForeground(QColor(46, 125, 50))
 
+# Friendly labels -> the CredKind the model expects.
+_KIND_CHOICES = {
+    "Windows (domain)": CredKind.DOMAIN_KERBEROS,
+    "Windows (standalone)": CredKind.LOCAL_NTLM,
+    "Linux (SSH)": CredKind.SSH_PASSWORD,
+}
+
+
+class AccessTab(QWidget):
+    def __init__(self, state: AppState):
+        super().__init__()
+        self.state = state
+        layout = QHBoxLayout(self)
+
+        # ---- Left: host table with a profile dropdown per row ----
+        left = QVBoxLayout()
+        left.addWidget(QLabel("Discovered hosts"))
+        self.host_table = QTableWidget(0, 5)
+        self.host_table.setHorizontalHeaderLabels(
+            ["Host", "OS", "Profile", "WinRM", "SSH"])
+        self.host_table.horizontalHeader().setStretchLastSection(True)
+        left.addWidget(self.host_table)
+
+        btn_row = QHBoxLayout()
+        self.load_btn = QPushButton("Load hosts from discovery")
+        self.load_btn.clicked.connect(self.load_hosts)
+        btn_row.addWidget(self.load_btn)
+        self.verify_btn = QPushButton("Verify access")
+        self.verify_btn.setEnabled(False)          # enabled in stage two
+        btn_row.addWidget(self.verify_btn)
+        left.addLayout(btn_row)
+        layout.addLayout(left, 2)
+
+        # ---- Right: credential profile creation ----
+        right = QVBoxLayout()
+        right.addWidget(QLabel("Create credential profile"))
+
+        self.name_in = QLineEdit(); self.name_in.setPlaceholderText("Profile name")
+        self.kind_in = QComboBox(); self.kind_in.addItems(_KIND_CHOICES.keys())
+        self.domain_in = QLineEdit(); self.domain_in.setPlaceholderText("Domain (Windows domain only)")
+        self.user_in = QLineEdit(); self.user_in.setPlaceholderText("Username")
+        self.pass_in = QLineEdit(); self.pass_in.setPlaceholderText("Password")
+        self.pass_in.setEchoMode(QLineEdit.Password)       # <-- masks input
+        self.sudo_in = QLineEdit(); self.sudo_in.setPlaceholderText("Sudo password (optional, Linux)")
+        self.sudo_in.setEchoMode(QLineEdit.Password)
+
+        for w in (self.name_in, self.kind_in, self.domain_in,
+                  self.user_in, self.pass_in, self.sudo_in):
+            right.addWidget(w)
+
+        self.add_profile_btn = QPushButton("Add profile")
+        self.add_profile_btn.clicked.connect(self.add_profile)
+        right.addWidget(self.add_profile_btn)
+
+        right.addWidget(QLabel("Profiles"))
+        self.profile_list = QListWidget()
+        right.addWidget(self.profile_list)
+        right.addStretch()
+        layout.addLayout(right, 1)
+
+    # ---- profile creation ----
+    def add_profile(self):
+        name = self.name_in.text().strip()
+        user = self.user_in.text().strip()
+        if not name or not user:
+            QMessageBox.warning(self, "Missing fields", "Profile needs at least a name and username.")
+            return
+        kind = _KIND_CHOICES[self.kind_in.currentText()]
+        profile = CredentialProfile(
+            name=name, kind=kind, username=user,
+            secret=self.pass_in.text(),
+            domain=self.domain_in.text().strip() or None,
+            sudo_secret=self.sudo_in.text(),
+        )
+        self.state.store.add(profile)
+        self.refresh_profiles()
+        # clear the form (but not the secret fields lingering in memory longer than needed)
+        for w in (self.name_in, self.domain_in, self.user_in, self.pass_in, self.sudo_in):
+            w.clear()
+
+    def refresh_profiles(self):
+        self.profile_list.clear()
+        self.profile_list.addItems(self.state.store.names())
+        # refresh every row's dropdown so new profiles appear
+        for r in range(self.host_table.rowCount()):
+            combo = self.host_table.cellWidget(r, 2)
+            if combo:
+                current = combo.currentText()
+                combo.clear()
+                combo.addItem("— none —")
+                combo.addItems(self.state.store.names())
+                combo.setCurrentText(current)
+
+    # ---- host loading ----
+    def load_hosts(self):
+        hosts = self.state.hosts
+        self.host_table.setRowCount(0)
+        for h in hosts:
+            r = self.host_table.rowCount()
+            self.host_table.insertRow(r)
+            self.host_table.setItem(r, 0, QTableWidgetItem(h.ip))
+            self.host_table.setItem(r, 1, QTableWidgetItem(h.os_guess.value))
+            combo = QComboBox()
+            combo.addItem("— none —")
+            combo.addItems(self.state.store.names())
+            self.host_table.setCellWidget(r, 2, combo)     # dropdown in the Profile column
+            self.host_table.setItem(r, 3, QTableWidgetItem("—"))
+            self.host_table.setItem(r, 4, QTableWidgetItem("—"))
+        self.verify_btn.setEnabled(len(hosts) > 0)
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -145,7 +261,8 @@ class MainWindow(QMainWindow):
 
         tabs = QTabWidget()
         tabs.addTab(DiscoveryTab(self.state), "1 · Discovery")
-        for name in ("2 · Access", "3 · Collect", "Log"):
+        tabs.addTab(AccessTab(self.state), "2 · Access")
+        for name in ("3 · Collect", "Log"):
             page = QWidget()
             lay = QVBoxLayout(page)
             lay.addWidget(QLabel(f"{name} — coming soon"))

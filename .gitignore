@@ -5,3 +5,4 @@ collected/
 __pycache__/
 *.csv
 *.pyc
+tests/
