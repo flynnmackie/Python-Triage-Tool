@@ -71,9 +71,9 @@ WINDOWS_CATALOGUE: list[Artefact] = [
     Artefact("win_prefetch", "Prefetch", "Prefetch", OSFamily.WINDOWS,
              volatility=15, is_command=False, is_archive=True,
              spec=rf"{_WIN_STAGE}\rtc_prefetch.zip",
-             prepare=rf"Compress-Archive -Path C:\Windows\Prefetch\* -DestinationPath {_WIN_STAGE}\rtc_prefetch.zip -Force"),
+             prepare=(rf"robocopy C:\Windows\Prefetch {_WIN_STAGE}\pf *.pf /B /R:0 /W:0 /NP /NFL /NDL /NJH /NJS > $null 2>&1; "
+                      rf"Compress-Archive -Path {_WIN_STAGE}\pf\* -DestinationPath {_WIN_STAGE}\rtc_prefetch.zip -Force")),
 ]
-
 # --- Unix-like -------------------------------------------------------------
 _NIX_STAGE = "{stage}"
 

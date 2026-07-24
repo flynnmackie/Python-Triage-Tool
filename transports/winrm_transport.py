@@ -61,9 +61,7 @@ class WinRMTransport(Transport):
         return AccessState.AUTHENTICATED
 
     def run_command(self, command: str, use_sudo: bool = False) -> bytes:
-        client = self._connect()
-        output, _streams, _had_errors = client.execute_ps(command)
-        return output.encode("utf-8", errors="replace")
+            return self._ps(command).encode("utf-8", errors="replace")
 
     def fetch_file(self, remote_path: str) -> bytes:
         import tempfile, os
