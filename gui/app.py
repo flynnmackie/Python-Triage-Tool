@@ -5,7 +5,7 @@ from __future__ import annotations
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QTabWidget, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QLineEdit, QPushButton, QTableWidget, QTableWidgetItem, QMessageBox,
-    QComboBox, QListWidget,
+    QComboBox, QListWidget, QListWidgetItem
 )
 from PySide6.QtCore import QThread, Signal, QObject, Qt
 from PySide6.QtGui import QColor
@@ -15,6 +15,11 @@ from core.models import OSFamily
 
 from core.credentials import CredentialStore
 from core.models import OSFamily, CredentialProfile, CredKind, AccessState
+
+from core.artefacts import catalogue_for
+from core.collection import collect_from_host, run_timestamp
+from transports.winrm_transport import WinRMTransport
+from transports.ssh_transport import SSHTransport
 
 
 
@@ -52,6 +57,28 @@ class ScanWorker(QObject):
         except Exception as exc:
             self.error.emit(str(exc))
         self.finished.emit(len(self.ips))
+
+class VerifyWorker(QObject):
+    """Runs verify_host for each host on a background thread."""
+    host_done = Signal(object)      # emits a Host after verification
+    finished = Signal()
+    error = Signal(str)
+
+    def __init__(self, hosts, store, audit):
+        super().__init__()
+        self.hosts = hosts
+        self.store = store
+        self.audit = audit
+
+    def run(self):
+        from core.access import verify_host
+        for host in self.hosts:
+            try:
+                verify_host(host, self.store, self.audit)
+            except Exception as exc:
+                self.audit.log(host.ip, "verify", outcome="error", detail=str(exc))
+            self.host_done.emit(host)
+        self.finished.emit()
 
 class DiscoveryTab(QWidget):
     def __init__(self, state: AppState):
@@ -154,6 +181,8 @@ class AccessTab(QWidget):
     def __init__(self, state: AppState):
         super().__init__()
         self.state = state
+        from core.audit import AuditLog
+        self.audit = AuditLog("triage_audit.csv")
         layout = QHBoxLayout(self)
 
         # ---- Left: host table with a profile dropdown per row ----
@@ -170,6 +199,7 @@ class AccessTab(QWidget):
         self.load_btn.clicked.connect(self.load_hosts)
         btn_row.addWidget(self.load_btn)
         self.verify_btn = QPushButton("Verify access")
+        self.verify_btn.clicked.connect(self.on_verify)
         self.verify_btn.setEnabled(False)          # enabled in stage two
         btn_row.addWidget(self.verify_btn)
         left.addLayout(btn_row)
@@ -252,6 +282,196 @@ class AccessTab(QWidget):
             self.host_table.setItem(r, 4, QTableWidgetItem("—"))
         self.verify_btn.setEnabled(len(hosts) > 0)
 
+    def on_verify(self):
+        # Read each row's dropdown selection back onto its Host.
+        hosts = self.state.hosts
+        for r, host in enumerate(hosts):
+            combo = self.host_table.cellWidget(r, 2)
+            choice = combo.currentText() if combo else "— none —"
+            host.profile_name = None if choice == "— none —" else choice
+
+        if not any(h.profile_name for h in hosts):
+            QMessageBox.warning(self, "No profiles assigned",
+                                "Assign a credential profile to at least one host first.")
+            return
+
+        self.verify_btn.setEnabled(False)
+        self.verify_btn.setText("Verifying…")
+
+        self.v_thread = QThread()
+        self.v_worker = VerifyWorker(hosts, self.state.store, self.audit)
+        self.v_worker.moveToThread(self.v_thread)
+        self.v_thread.started.connect(self.v_worker.run)
+        self.v_worker.host_done.connect(self.on_host_verified)
+        self.v_worker.finished.connect(self.on_verify_done)
+        self.v_worker.finished.connect(self.v_thread.quit)
+        self.v_thread.start()
+
+    def on_host_verified(self, host):
+        # Find this host's row and colour its WinRM/SSH cells.
+        for r in range(self.host_table.rowCount()):
+            if self.host_table.item(r, 0).text() == host.ip:
+                self._set_state_cell(r, 3, host.winrm_state)
+                self._set_state_cell(r, 4, host.ssh_state)
+                break
+
+    def on_verify_done(self):
+        self.verify_btn.setEnabled(True)
+        self.verify_btn.setText("Verify access")
+
+    def _set_state_cell(self, row, col, state):
+        labels = {
+            AccessState.AUTHENTICATED: ("authenticated", QColor(200, 230, 201)),
+            AccessState.PRESENT_NO_AUTH: ("creds rejected", QColor(255, 205, 210)),
+            AccessState.ABSENT: ("absent", QColor(224, 224, 224)),
+        }
+        text, colour = labels.get(state, ("—", None))
+        item = QTableWidgetItem(text)
+        if colour:
+            item.setBackground(colour)
+        self.host_table.setItem(row, col, item)
+
+class CollectWorker(QObject):
+    """Runs collection for each selected host on a background thread."""
+    log_row = Signal(object)        # emits an AuditRecord as it happens
+    host_done = Signal(str, int, int)   # ip, ok_count, total
+    finished = Signal(str)          # run folder
+    error = Signal(str)
+
+    def __init__(self, hosts, selected_ids, store, audit, run_folder):
+        super().__init__()
+        self.hosts = hosts
+        self.selected_ids = selected_ids     # set of artefact ids the user ticked
+        self.store = store
+        self.audit = audit
+        self.run_folder = run_folder
+
+    def run(self):
+        # live-feed the audit log into the Log tab
+        self.audit.subscribe(self.log_row.emit)
+        for host in self.hosts:
+            try:
+                profile = self.store.get(host.profile_name)
+                if host.actual_os is OSFamily.UNIX:
+                    transport = SSHTransport(host.ip, profile)
+                else:
+                    transport = WinRMTransport(host.ip, profile)
+
+                # platform-filter: only this host's-OS artefacts that were ticked
+                catalogue = catalogue_for(host.actual_os)
+                chosen = [a for a in catalogue if a.id in self.selected_ids]
+
+                results = collect_from_host(host, chosen, transport, self.audit,
+                                            out_root="collected", run_folder=self.run_folder)
+                transport.close()
+                ok = sum(1 for r in results if r.collected)
+                self.host_done.emit(host.ip, ok, len(results))
+            except Exception as exc:
+                self.error.emit(f"{host.ip}: {exc}")
+        self.finished.emit(self.run_folder)
+
+class CollectTab(QWidget):
+    def __init__(self, state: AppState, audit, log_tab):
+        super().__init__()
+        self.state = state
+        self.audit = audit
+        self.log_tab = log_tab
+        layout = QHBoxLayout(self)
+
+        # ---- Left: host checklist ----
+        left = QVBoxLayout()
+        left.addWidget(QLabel("Hunt on (authenticated hosts)"))
+        self.host_list = QListWidget()
+        left.addWidget(self.host_list)
+        self.load_btn = QPushButton("Load authenticated hosts")
+        self.load_btn.clicked.connect(self.load_hosts)
+        left.addWidget(self.load_btn)
+        layout.addLayout(left, 1)
+
+        # ---- Right: artefact selection ----
+        right = QVBoxLayout()
+        right.addWidget(QLabel("Artefacts to collect"))
+        self.artefact_list = QListWidget()
+        self.populate_artefacts()
+        right.addWidget(self.artefact_list)
+        self.collect_btn = QPushButton("Start collection")
+        self.collect_btn.clicked.connect(self.on_collect)
+        right.addWidget(self.collect_btn)
+        self.status = QLabel("")
+        right.addWidget(self.status)
+        layout.addLayout(right, 1)
+
+    def populate_artefacts(self):
+        from PySide6.QtCore import Qt
+        for os_family, header in [(OSFamily.WINDOWS, "— Windows —"),
+                                  (OSFamily.UNIX, "— Unix —")]:
+            hdr = QListWidgetItem(header)
+            hdr.setFlags(Qt.NoItemFlags)            # non-selectable header
+            self.artefact_list.addItem(hdr)
+            for a in catalogue_for(os_family):
+                item = QListWidgetItem(f"  {a.name}")
+                item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
+                item.setCheckState(Qt.Checked)      # default: all ticked
+                item.setData(Qt.UserRole, a.id)     # stash the artefact id
+                self.artefact_list.addItem(item)
+
+    def load_hosts(self):
+        self.host_list.clear()
+        for h in self.state.hosts:
+            authed = (h.winrm_state is AccessState.AUTHENTICATED or
+                      h.ssh_state is AccessState.AUTHENTICATED)
+            if not authed:
+                continue
+            from PySide6.QtCore import Qt
+            item = QListWidgetItem(f"{h.ip}  ({h.actual_os.value})")
+            item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
+            item.setCheckState(Qt.Checked)
+            item.setData(Qt.UserRole, h.ip)
+            self.host_list.addItem(item)
+
+    def on_collect(self):
+        from PySide6.QtCore import Qt
+        # which hosts are ticked
+        chosen_ips = {self.host_list.item(i).data(Qt.UserRole)
+                      for i in range(self.host_list.count())
+                      if self.host_list.item(i).checkState() == Qt.Checked}
+        hosts = [h for h in self.state.hosts if h.ip in chosen_ips]
+        # which artefacts are ticked
+        selected_ids = {self.artefact_list.item(i).data(Qt.UserRole)
+                        for i in range(self.artefact_list.count())
+                        if self.artefact_list.item(i).flags() & Qt.ItemIsUserCheckable
+                        and self.artefact_list.item(i).checkState() == Qt.Checked}
+
+        if not hosts or not selected_ids:
+            QMessageBox.warning(self, "Nothing selected",
+                                "Tick at least one host and one artefact.")
+            return
+
+        self.collect_btn.setEnabled(False)
+        self.collect_btn.setText("Collecting…")
+        self.log_tab.clear()
+
+        run_folder = run_timestamp()
+        self.c_thread = QThread()
+        self.c_worker = CollectWorker(hosts, selected_ids, self.state.store,
+                                      self.audit, run_folder)
+        self.c_worker.moveToThread(self.c_thread)
+        self.c_thread.started.connect(self.c_worker.run)
+        self.c_worker.log_row.connect(self.log_tab.add_row)
+        self.c_worker.host_done.connect(self.on_host_done)
+        self.c_worker.error.connect(lambda m: QMessageBox.warning(self, "Collection error", m))
+        self.c_worker.finished.connect(self.on_done)
+        self.c_worker.finished.connect(self.c_thread.quit)
+        self.c_thread.start()
+
+    def on_host_done(self, ip, ok, total):
+        self.status.setText(f"{ip}: {ok}/{total} artefacts collected")
+
+    def on_done(self, run_folder):
+        self.collect_btn.setEnabled(True)
+        self.collect_btn.setText("Start collection")
+        self.status.setText(f"Done. Output under collected/{run_folder}/")
+
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -261,14 +481,40 @@ class MainWindow(QMainWindow):
 
         tabs = QTabWidget()
         tabs.addTab(DiscoveryTab(self.state), "1 · Discovery")
-        tabs.addTab(AccessTab(self.state), "2 · Access")
-        for name in ("3 · Collect", "Log"):
-            page = QWidget()
-            lay = QVBoxLayout(page)
-            lay.addWidget(QLabel(f"{name} — coming soon"))
-            tabs.addTab(page, name)
+        access = AccessTab(self.state)
+        tabs.addTab(access, "2 · Access")
+        log_tab = LogTab()
+        collect = CollectTab(self.state, access.audit, log_tab)
+        tabs.addTab(collect, "3 · Collect")
+        tabs.addTab(log_tab, "Log")
         self.setCentralWidget(tabs)
 
+class LogTab(QWidget):
+
+    def __init__(self):
+        super().__init__()
+        layout = QVBoxLayout(self)
+        layout.addWidget(QLabel("Activity log (chain of custody)"))
+        self.table = QTableWidget(0, 6)
+        self.table.setHorizontalHeaderLabels(
+            ["Time", "Host", "Action", "Artefact", "Size", "Match"])
+        self.table.horizontalHeader().setStretchLastSection(True)
+        layout.addWidget(self.table)
+
+    def clear(self):
+        self.table.setRowCount(0)
+
+    def add_row(self, rec):
+        r = self.table.rowCount()
+        self.table.insertRow(r)
+        cells = [rec.timestamp.split("T")[-1], rec.host, rec.action,
+                 rec.artefact, rec.size_bytes, rec.match]
+        for c, v in enumerate(cells):
+            self.table.setItem(r, c, QTableWidgetItem(str(v)))
+        if rec.match == "Y":
+            self.table.item(r, 5).setBackground(QColor(200, 230, 201))
+        elif rec.outcome == "error":
+            self.table.item(r, 2).setBackground(QColor(255, 205, 210))
 
 def run():
     app = QApplication([])
