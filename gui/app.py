@@ -31,18 +31,20 @@ class AppState:
 
 
 class ScanWorker(QObject):
-    """Runs discovery on a background thread, emitting each host as it's found."""
     host_found = Signal(object)
-    finished = Signal(int)          # emits total IPs scanned
+    finished = Signal(int)
+    error = Signal(str)             # <-- new
 
     def __init__(self, ips):
         super().__init__()
         self.ips = ips
 
     def run(self):
-        discover(self.ips, progress=self.host_found.emit)
+        try:
+            discover(self.ips, progress=self.host_found.emit)
+        except Exception as exc:
+            self.error.emit(str(exc))
         self.finished.emit(len(self.ips))
-
 
 class DiscoveryTab(QWidget):
     def __init__(self, state: AppState):
@@ -87,6 +89,7 @@ class DiscoveryTab(QWidget):
 
         self.thread = QThread()
         self.worker = ScanWorker(ips)
+        self.worker.error.connect(lambda msg: QMessageBox.warning(self, "Scan error", msg))
         self.worker.moveToThread(self.thread)
         self.thread.started.connect(self.worker.run)
         self.worker.host_found.connect(self.on_host_found)

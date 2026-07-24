@@ -60,27 +60,44 @@ def os_from_ttl(ttl: int | None) -> OSFamily:
 
 def expand_targets(spec: str) -> list[str]:
     """Expand '192.168.1.0/24', '192.168.1.10-50', or a single IP to a list.
- 
-    Returns a list of individual IP-address strings.
+
+    Raises ValueError with a readable message if the input is malformed.
     """
     spec = spec.strip()
- 
-    # Case 1 - CIDR notation, e.g. "192.168.1.0/24"
-    if "/" in spec:
-        network = ipaddress.ip_network(spec, strict=False)
-        return [str(ip) for ip in network.hosts()]
- 
-    # Case 2 - last-octet dash range, e.g. "192.168.1.10-20"
-    if "-" in spec:
-        base, end_str = spec.split("-", 1)
-        octets = base.split(".")
-        prefix = ".".join(octets[:3])       # "192.168.1"
-        start = int(octets[3])              # 10
-        end = int(end_str)                  # 20
-        return [f"{prefix}.{octet}" for octet in range(start, end + 1)]
- 
-    # Case 3 - a single IP address
-    return [spec]
+    if not spec:
+        raise ValueError("No target entered.")
+
+    try:
+        # Case 1 - CIDR, e.g. "192.168.1.0/24"
+        if "/" in spec:
+            network = ipaddress.ip_network(spec, strict=False)
+            return [str(ip) for ip in network.hosts()]
+
+        # Case 2 - last-octet dash range, e.g. "192.168.1.10-20"
+        if "-" in spec:
+            base, end_str = spec.split("-", 1)
+            octets = base.split(".")
+            if len(octets) != 4:
+                raise ValueError("Range must look like 192.168.1.10-20")
+            start = int(octets[3])
+            end = int(end_str)
+            if not (0 <= start <= 255 and 0 <= end <= 255):
+                raise ValueError("Octets must be 0-255")
+            if end < start:
+                raise ValueError("Range end is before its start")
+            prefix = ".".join(octets[:3])
+            # Validate the base is a real IP by constructing the first address.
+            ipaddress.ip_address(f"{prefix}.{start}")
+            return [f"{prefix}.{octet}" for octet in range(start, end + 1)]
+
+        # Case 3 - single IP: validate it's genuinely an IP address.
+        ipaddress.ip_address(spec)
+        return [spec]
+
+    except ValueError:
+        raise                       # re-raise our own clear messages as-is
+    except Exception:
+        raise ValueError(f"'{spec}' is not a valid IP, range, or CIDR.")
 
 
 
