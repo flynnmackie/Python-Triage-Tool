@@ -101,3 +101,9 @@ class WinRMTransport(Transport):
             errs = "; ".join(str(e) for e in streams.error) or "unknown PowerShell error"
             raise RuntimeError(f"PowerShell error: {errs}")
         return output
+
+    def make_dir(self, path: str) -> None:
+        self._ps(f"New-Item -ItemType Directory -Force -Path '{path}' | Out-Null")
+
+    def remove_dir(self, path: str) -> None:
+        self._ps(f"Remove-Item -Recurse -Force -Path '{path}' -ErrorAction SilentlyContinue")

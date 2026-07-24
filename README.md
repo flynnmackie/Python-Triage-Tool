@@ -2,7 +2,7 @@
 
 Cross-platform, agentless forensic triage tool. Python controller reaching
 Windows targets over WinRM/PowerShell Remoting (pypsrp) and Unix-like targets
-over SSH (paramiko). See dissertation Chapter 3 for the design.
+over SSH (paramiko).
 
 ## Layout
 

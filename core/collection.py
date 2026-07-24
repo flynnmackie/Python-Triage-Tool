@@ -40,10 +40,18 @@ def _extract_zip(zip_bytes: bytes, dest_dir: Path) -> int:
         return len(zf.namelist())
 
 
+def _stage_dir(host: Host, run_folder: str) -> str:
+    """Per-run working directory on the TARGET, platform-appropriate."""
+    from .models import OSFamily
+    if host.actual_os is OSFamily.UNIX:
+        return f"/tmp/rtc_{run_folder}"
+    return rf"C:\ProgramData\rtc\{run_folder}"
+
+
 def collect_from_host(
     host: Host,
     artefacts: list[Artefact],
-    transport,           # a Transport instance for this host
+    transport,
     audit: AuditLog,
     out_root: str | Path,
     run_folder: str,
@@ -55,79 +63,84 @@ def collect_from_host(
     host_dir = Path(out_root) / run_folder / host.ip
     host_dir.mkdir(parents=True, exist_ok=True)
 
-    for artefact in ordered:
-        result = CollectionResult(host_ip=host.ip, artefact_id=artefact.id)
-        prepared_temp = None      # set only if we created a temp file to clean up
+    # Per-run working directory on the target (created now, removed at the end).
+    stage = _stage_dir(host, run_folder)
+    staged = False
+    if any(a.prepare for a in ordered):
         try:
-            if artefact.is_command:
-                # Volatile output generated on the fly - nothing to hash at source.
-                data = transport.run_command(artefact.spec)
-                source_hash = None
-                out_name = f"{artefact.id}.txt"
-            else:
-                if artefact.prepare:
-                    # Locked file: ask Windows to write an unlocked copy first,
-                    # then fetch THAT. spec points at the copy's location.
-                    transport.run_command(artefact.prepare, use_sudo=artefact.requires_sudo)
-                    prepared_temp = artefact.spec
-                    audit.log(
-                        host.ip, "collect", artefact=artefact.name,
-                        source_hash=source_hash or "", received_hash=received_hash,
-                        size_bytes=str(len(data)),
-                        outcome="ok" if data else "ok (empty)",
-                    )
-
-                # A file (either an unlocked original, or the prepared copy):
-                # hash on the target (NFR1), fetch, then compare.
-                source_hash = transport.remote_hash(artefact.spec)
-                data = transport.fetch_file(artefact.spec)
-                out_name = f"{artefact.id}_{_basename(artefact.spec)}"
-
-            received_hash = sha256_bytes(data)
-
-            category_dir = host_dir / artefact.category
-            category_dir.mkdir(parents=True, exist_ok=True)
-
-            if artefact.is_archive:
-                # Hash covers the zip (integrity of the transfer); then unpack
-                # the individual files into the category folder for analysis.
-                count = _extract_zip(data, category_dir)
-                out_path = category_dir
-                audit.log(host.ip, "extract", artefact=artefact.name,
-                          outcome="ok", detail=f"{count} files -> {category_dir}")
-            else:
-                out_path = category_dir / out_name
-                out_path.write_bytes(data)
-
-            result.collected = True
-            result.source_hash = source_hash
-            result.received_hash = received_hash
-            result.output_path = str(out_path)
-
-            audit.log(
-                host.ip, "collect", artefact=artefact.name,
-                source_hash=source_hash or "", received_hash=received_hash,
-                outcome="ok",
-            )
+            transport.make_dir(stage)
+            staged = True
+            audit.log(host.ip, "stage", outcome="ok", detail=f"created {stage}")
         except Exception as exc:
-            result.collected = False
-            result.error = str(exc)
-            audit.log(
-                host.ip, "collect", artefact=artefact.name,
-                outcome="error", detail=str(exc),
-            )
-        finally:
-            # Remove any temp file we created - even if the fetch above failed.
-            # This is the footprint-minimisation guarantee (NFR4).
-            if prepared_temp is not None:
-                try:
-                    transport.delete_remote(prepared_temp)
-                    audit.log(host.ip, "cleanup", artefact=artefact.name,
-                              outcome="ok", detail=f"removed {prepared_temp}")
-                except Exception as exc:
-                    audit.log(host.ip, "cleanup", artefact=artefact.name,
-                              outcome="error", detail=str(exc))
+            audit.log(host.ip, "stage", outcome="error", detail=str(exc))
 
-        results.append(result)
+    try:
+        for artefact in ordered:
+            result = CollectionResult(host_ip=host.ip, artefact_id=artefact.id)
+            prepared_temp = None
+            try:
+                if artefact.is_command:
+                    data = transport.run_command(artefact.spec)
+                    source_hash = None
+                    out_name = f"{artefact.id}.txt"
+                else:
+                    spec = artefact.spec.replace("{stage}", stage)
+                    if artefact.prepare:
+                        prep = artefact.prepare.replace("{stage}", stage)
+                        transport.run_command(prep, use_sudo=artefact.requires_sudo)
+                        prepared_temp = spec
+                    source_hash = transport.remote_hash(spec)
+                    data = transport.fetch_file(spec)
+                    out_name = f"{artefact.id}_{_basename(spec)}"
+
+                received_hash = sha256_bytes(data)
+
+                category_dir = host_dir / artefact.category
+                category_dir.mkdir(parents=True, exist_ok=True)
+
+                if artefact.is_archive:
+                    count = _extract_zip(data, category_dir)
+                    out_path = category_dir
+                    audit.log(host.ip, "extract", artefact=artefact.name,
+                              outcome="ok", detail=f"{count} files -> {category_dir}")
+                else:
+                    out_path = category_dir / out_name
+                    out_path.write_bytes(data)
+
+                result.collected = True
+                result.source_hash = source_hash
+                result.received_hash = received_hash
+                result.output_path = str(out_path)
+
+                audit.log(
+                    host.ip, "collect", artefact=artefact.name,
+                    source_hash=source_hash or "", received_hash=received_hash,
+                    size_bytes=str(len(data)),
+                    outcome="ok" if data else "ok (empty)",
+                )
+            except Exception as exc:
+                result.collected = False
+                result.error = str(exc)
+                audit.log(host.ip, "collect", artefact=artefact.name,
+                          outcome="error", detail=str(exc))
+            finally:
+                if prepared_temp is not None:
+                    try:
+                        transport.delete_remote(prepared_temp)
+                        audit.log(host.ip, "cleanup", artefact=artefact.name,
+                                  outcome="ok", detail=f"removed {prepared_temp}")
+                    except Exception as exc:
+                        audit.log(host.ip, "cleanup", artefact=artefact.name,
+                                  outcome="error", detail=str(exc))
+
+            results.append(result)
+    finally:
+        # Remove the whole per-run working directory (footprint teardown, NFR4).
+        if staged:
+            try:
+                transport.remove_dir(stage)
+                audit.log(host.ip, "stage", outcome="ok", detail=f"removed {stage}")
+            except Exception as exc:
+                audit.log(host.ip, "stage", outcome="error", detail=str(exc))
 
     return results

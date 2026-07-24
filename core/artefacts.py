@@ -19,7 +19,7 @@ from __future__ import annotations
 
 from .models import Artefact, OSFamily
 
-_WIN_TMP = r"C:\Windows\Temp"
+_WIN_STAGE = "{stage}"      # filled in per-run by collection with the working dir
 
 # --- Windows ---------------------------------------------------------------
 WINDOWS_CATALOGUE: list[Artefact] = [
@@ -41,41 +41,41 @@ WINDOWS_CATALOGUE: list[Artefact] = [
 
     # Registry hives - locked; export an unlocked copy with reg save.
     Artefact("win_reg_system", "SYSTEM hive", "Hives", OSFamily.WINDOWS,
-             volatility=15, is_command=False, spec=rf"{_WIN_TMP}\rtc_system.hiv",
-             prepare=rf"reg save HKLM\SYSTEM {_WIN_TMP}\rtc_system.hiv /y"),
+             volatility=15, is_command=False, spec=rf"{_WIN_STAGE}\rtc_system.hiv",
+             prepare=rf"reg save HKLM\SYSTEM {_WIN_STAGE}\rtc_system.hiv /y"),
     Artefact("win_reg_software", "SOFTWARE hive", "Hives", OSFamily.WINDOWS,
-             volatility=15, is_command=False, spec=rf"{_WIN_TMP}\rtc_software.hiv",
-             prepare=rf"reg save HKLM\SOFTWARE {_WIN_TMP}\rtc_software.hiv /y"),
+             volatility=15, is_command=False, spec=rf"{_WIN_STAGE}\rtc_software.hiv",
+             prepare=rf"reg save HKLM\SOFTWARE {_WIN_STAGE}\rtc_software.hiv /y"),
     Artefact("win_reg_sam", "SAM hive", "Hives", OSFamily.WINDOWS,
-             volatility=15, is_command=False, spec=rf"{_WIN_TMP}\rtc_sam.hiv",
-             prepare=rf"reg save HKLM\SAM {_WIN_TMP}\rtc_sam.hiv /y"),
+             volatility=15, is_command=False, spec=rf"{_WIN_STAGE}\rtc_sam.hiv",
+             prepare=rf"reg save HKLM\SAM {_WIN_STAGE}\rtc_sam.hiv /y"),
     Artefact("win_reg_security", "SECURITY hive", "Hives", OSFamily.WINDOWS,
-             volatility=15, is_command=False, spec=rf"{_WIN_TMP}\rtc_sechive.hiv",
-             prepare=rf"reg save HKLM\SECURITY {_WIN_TMP}\rtc_sechive.hiv /y"),
+             volatility=15, is_command=False, spec=rf"{_WIN_STAGE}\rtc_sechive.hiv",
+             prepare=rf"reg save HKLM\SECURITY {_WIN_STAGE}\rtc_sechive.hiv /y"),
 
     # Event logs - locked; export with wevtutil epl.
     Artefact("win_evtx_security", "Security event log", "EventLogs", OSFamily.WINDOWS,
-             volatility=15, is_command=False, spec=rf"{_WIN_TMP}\rtc_security.evtx",
-             prepare=rf"wevtutil epl Security {_WIN_TMP}\rtc_security.evtx /ow:true"),
+             volatility=15, is_command=False, spec=rf"{_WIN_STAGE}\rtc_security.evtx",
+             prepare=rf"wevtutil epl Security {_WIN_STAGE}\rtc_security.evtx /ow:true"),
     Artefact("win_evtx_system", "System event log", "EventLogs", OSFamily.WINDOWS,
-             volatility=15, is_command=False, spec=rf"{_WIN_TMP}\rtc_system_evtx.evtx",
-             prepare=rf"wevtutil epl System {_WIN_TMP}\rtc_system_evtx.evtx /ow:true"),
+             volatility=15, is_command=False, spec=rf"{_WIN_STAGE}\rtc_system_evtx.evtx",
+             prepare=rf"wevtutil epl System {_WIN_STAGE}\rtc_system_evtx.evtx /ow:true"),
     Artefact("win_evtx_application", "Application event log", "EventLogs", OSFamily.WINDOWS,
-             volatility=15, is_command=False, spec=rf"{_WIN_TMP}\rtc_application.evtx",
-             prepare=rf"wevtutil epl Application {_WIN_TMP}\rtc_application.evtx /ow:true"),
+             volatility=15, is_command=False, spec=rf"{_WIN_STAGE}\rtc_application.evtx",
+             prepare=rf"wevtutil epl Application {_WIN_STAGE}\rtc_application.evtx /ow:true"),
     Artefact("win_evtx_powershell", "PowerShell operational log", "EventLogs", OSFamily.WINDOWS,
-             volatility=15, is_command=False, spec=rf"{_WIN_TMP}\rtc_pwsh.evtx",
-             prepare=rf'wevtutil epl "Microsoft-Windows-PowerShell/Operational" {_WIN_TMP}\rtc_pwsh.evtx /ow:true'),
+             volatility=15, is_command=False, spec=rf"{_WIN_STAGE}\rtc_pwsh.evtx",
+             prepare=rf'wevtutil epl "Microsoft-Windows-PowerShell/Operational" {_WIN_STAGE}\rtc_pwsh.evtx /ow:true'),
 
     # Prefetch - a directory; zip on target, fetch, flatten.
     Artefact("win_prefetch", "Prefetch", "Prefetch", OSFamily.WINDOWS,
              volatility=15, is_command=False, is_archive=True,
-             spec=rf"{_WIN_TMP}\rtc_prefetch.zip",
-             prepare=rf"Compress-Archive -Path C:\Windows\Prefetch\* -DestinationPath {_WIN_TMP}\rtc_prefetch.zip -Force"),
+             spec=rf"{_WIN_STAGE}\rtc_prefetch.zip",
+             prepare=rf"Compress-Archive -Path C:\Windows\Prefetch\* -DestinationPath {_WIN_STAGE}\rtc_prefetch.zip -Force"),
 ]
 
 # --- Unix-like -------------------------------------------------------------
-_NIX_TMP = "/tmp"
+_NIX_STAGE = "{stage}"
 
 UNIX_CATALOGUE: list[Artefact] = [
     # Volatile.
@@ -91,14 +91,14 @@ UNIX_CATALOGUE: list[Artefact] = [
     # Logs - root-owned; zip via sudo into /tmp, chmod so UnixUser can fetch it.
     Artefact("nix_varlog", "System logs (/var/log)", "SystemLogs", OSFamily.UNIX,
              volatility=15, is_command=False, is_archive=True, requires_sudo=True,
-             spec=f"{_NIX_TMP}/rtc_varlog.zip",
-             prepare=f"sh -c 'cd /var/log && zip -r {_NIX_TMP}/rtc_varlog.zip . >/dev/null 2>&1; chmod 644 {_NIX_TMP}/rtc_varlog.zip'"),
+             spec=f"{_NIX_STAGE}/rtc_varlog.zip",
+             prepare=f"sh -c 'cd /var/log && zip -r {_NIX_STAGE}/rtc_varlog.zip . >/dev/null 2>&1; chmod 644 {_NIX_STAGE}/rtc_varlog.zip'"),
 
     # Root shell history - copy out via sudo, then fetch the readable copy.
     Artefact("nix_bash_history", "Root shell history", "History", OSFamily.UNIX,
              volatility=15, is_command=False, requires_sudo=True,
-             spec=f"{_NIX_TMP}/rtc_root_bash_history",
-             prepare=f"sh -c 'cp /root/.bash_history {_NIX_TMP}/rtc_root_bash_history; chmod 644 {_NIX_TMP}/rtc_root_bash_history'"),
+             spec=f"{_NIX_STAGE}/rtc_root_bash_history",
+             prepare=f"sh -c 'cp /root/.bash_history {_NIX_STAGE}/rtc_root_bash_history; chmod 644 {_NIX_STAGE}/rtc_root_bash_history'"),
  
     Artefact("nix_lastlog", "Last login per user", "Volatile", OSFamily.UNIX,
              volatility=85, spec="lastlog"),

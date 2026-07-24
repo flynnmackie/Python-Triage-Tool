@@ -103,3 +103,9 @@ class SSHTransport(Transport):
         if self._client is not None:
             self._client.close()
             self._client = None
+
+    def make_dir(self, path: str) -> None:
+        self.run_command(f"mkdir -p {path}")
+
+    def remove_dir(self, path: str) -> None:
+        self.run_command(f"rm -rf {path}", use_sudo=True)
