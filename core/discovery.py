@@ -84,7 +84,7 @@ def expand_targets(spec: str) -> list[str]:
 
 
 
-def discover(targets: Iterable[str]) -> list[Host]:
+def discover(targets: Iterable[str], progress=None) -> list[Host]:
     """Probe each target and return Host objects with liveness + OS guess.
  
     Liveness = a ping reply OR any hint port answering. OS guess combines the
@@ -148,5 +148,8 @@ def discover(targets: Iterable[str]) -> list[Host]:
         host.fingerprint_basis = ", ".join(parts) if parts else "no signal"
  
         hosts.append(host)
+        if progress:
+            progress(host)
+        
  
     return hosts
