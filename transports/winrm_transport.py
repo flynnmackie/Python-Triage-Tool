@@ -66,14 +66,16 @@ class WinRMTransport(Transport):
         return output.encode("utf-8", errors="replace")
 
     def fetch_file(self, remote_path: str) -> bytes:
+        import tempfile, os
         client = self._connect()
-        # Read the file through PowerShell as Base64, decode on our side.
-        ps = (
-            f"[Convert]::ToBase64String("
-            f"[IO.File]::ReadAllBytes('{remote_path}'))"
-        )
-        b64, _streams, _had_errors = client.execute_ps(ps)
-        return base64.b64decode(b64)
+        tmp = tempfile.NamedTemporaryFile(delete=False)
+        tmp.close()
+        try:
+            client.fetch(remote_path, tmp.name)
+            with open(tmp.name, "rb") as f:
+                return f.read()
+        finally:
+            os.unlink(tmp.name)
 
     def remote_hash(self, remote_path: str) -> str | None:
         client = self._connect()
@@ -91,3 +93,11 @@ class WinRMTransport(Transport):
 
     def close(self) -> None:
         self._client = None
+
+    def _ps(self, script: str) -> str:
+        client = self._connect()
+        output, streams, had_errors = client.execute_ps(script)
+        if had_errors:
+            errs = "; ".join(str(e) for e in streams.error) or "unknown PowerShell error"
+            raise RuntimeError(f"PowerShell error: {errs}")
+        return output

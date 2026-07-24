@@ -85,8 +85,6 @@ UNIX_CATALOGUE: list[Artefact] = [
              volatility=95, spec="ss -tunap"),
     Artefact("nix_who", "Logged-on users", "Volatile", OSFamily.UNIX,
              volatility=90, spec="who -a"),
-    Artefact("nix_last", "Login history", "Volatile", OSFamily.UNIX,
-             volatility=85, spec="last -F -w"),
     Artefact("nix_cron_list", "User crontab", "Volatile", OSFamily.UNIX,
              volatility=80, spec="crontab -l 2>/dev/null; echo '--- /etc/crontab ---'; cat /etc/crontab 2>/dev/null"),
 

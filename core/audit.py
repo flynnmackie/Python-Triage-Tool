@@ -25,6 +25,7 @@ class AuditRecord:
     artefact: str = ""
     source_hash: str = ""
     received_hash: str = ""
+    size_bytes: str = ""
     match: str = ""
     outcome: str = ""
     detail: str = ""
@@ -55,6 +56,7 @@ class AuditLog:
         artefact: str = "",
         source_hash: str = "",
         received_hash: str = "",
+        size_bytes: str = "",
         outcome: str = "",
         detail: str = "",
     ) -> AuditRecord:
@@ -68,6 +70,7 @@ class AuditLog:
             artefact=artefact,
             source_hash=source_hash,
             received_hash=received_hash,
+            size_bytes=size_bytes,
             match=match,
             outcome=outcome,
             detail=detail,

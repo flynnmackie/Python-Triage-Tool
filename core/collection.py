@@ -70,8 +70,12 @@ def collect_from_host(
                     # then fetch THAT. spec points at the copy's location.
                     transport.run_command(artefact.prepare, use_sudo=artefact.requires_sudo)
                     prepared_temp = artefact.spec
-                    audit.log(host.ip, "prepare", artefact=artefact.name,
-                              outcome="ok", detail=f"created {artefact.spec}")
+                    audit.log(
+                        host.ip, "collect", artefact=artefact.name,
+                        source_hash=source_hash or "", received_hash=received_hash,
+                        size_bytes=str(len(data)),
+                        outcome="ok" if data else "ok (empty)",
+                    )
 
                 # A file (either an unlocked original, or the prepared copy):
                 # hash on the target (NFR1), fetch, then compare.
@@ -90,7 +94,7 @@ def collect_from_host(
                 count = _extract_zip(data, category_dir)
                 out_path = category_dir
                 audit.log(host.ip, "extract", artefact=artefact.name,
-                          outcome="ok", detail=f"{count} files -> {extract_dir}")
+                          outcome="ok", detail=f"{count} files -> {category_dir}")
             else:
                 out_path = category_dir / out_name
                 out_path.write_bytes(data)
